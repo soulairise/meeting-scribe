@@ -1,6 +1,24 @@
 # meeting-scribe
 
-회의·강의를 기록하고 요약하는 macOS 도구. 지금은 **S1 오디오 캡처 모듈**만 구현되어 있다.
+회의·강의를 녹음해 **회의록·요약·담당자별 할 일**을, 강의는 **개념 정리·이해도 문항·과제**까지 만들어 주는 도구.
+한국어 회의에 섞이는 영어 용어를 LLM이 교정한다.
+
+## 📥 내려받기
+
+| 플랫폼 | 파일 | 크기 |
+|---|---|---|
+| **macOS** 26 이상 | [MeetingScribe-0.1.1.dmg](https://github.com/soulairise/meeting-scribe/releases/download/v0.1.1/MeetingScribe-0.1.1.dmg) | 486KB |
+| **Windows** 10 20H1 이상 (x64) | [MeetingScribe-0.1.1-win-x64.zip](https://github.com/soulairise/meeting-scribe/releases/download/v0.1.1/MeetingScribe-0.1.1-win-x64.zip) | 64MB |
+
+전체 목록은 [릴리스 페이지](https://github.com/soulairise/meeting-scribe/releases/latest)에 있다.
+
+> **macOS 첫 실행** — 서명이 없어 차단된다. 더블클릭 → [완료] → **시스템 설정 > 개인정보 보호 및 보안** →
+> 아래로 스크롤 → *"'MeetingScribe'이(가) 차단되었습니다"* → **[그래도 열기]**.
+> macOS 15부터 "오른쪽 클릭 → 열기"는 동작하지 않는다.
+>
+> **Windows 첫 실행** — SmartScreen 경고에서 "추가 정보" → "실행". 첫 실행 시 음성인식 모델 550MB를 내려받는다.
+
+**공통 필요 조건**: [Claude Code](https://claude.com/claude-code) CLI 설치 및 로그인 (요약·용어교정에 사용)
 
 ## 지금 되는 것
 
@@ -273,17 +291,6 @@ ASR 단계에서 고치려 시도했으나 **효과가 전혀 없었다.** 그�
 - **긴 회의 미검증** — 66초 전사에 LLM 42초가 걸렸다. 90분 회의는 전사문이 커서 분할 처리가 필요할 수 있다
 - **화자분리 없음** — 지금은 트랙(마이크/시스템)으로만 "나/상대"를 나눈다. 상대가 여러 명이면 구분되지 않는다
 - **클라우드 API 미비교** — 온디바이스만 검증했다
-
----
-
-# 내려받기
-
-| 플랫폼 | 파일 | 비고 |
-|---|---|---|
-| macOS 26+ | `MeetingScribe-0.1.1.dmg` | 486KB. OS 내장 음성인식 사용 |
-| Windows 10 20H1+ (x64) | `MeetingScribe-0.1.1-win-x64.zip` | 64MB. .NET 포함, 첫 실행 시 모델 550MB 다운로드 |
-
-[릴리스 페이지](https://github.com/soulairise/meeting-scribe/releases/latest)에서 받는다.
 
 ## 로드맵
 
