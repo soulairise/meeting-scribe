@@ -95,20 +95,28 @@ public sealed class Transcriber : IAsyncDisposable
         var bytes = ReadAllRetry(path);
         if (bytes is null || bytes.Length <= 44) return null;
 
-        if (tailSeconds is null) return new MemoryStream(bytes);
-
         const int header = 44;
         int bytesPerSecond = AudioCapture.SampleRate * 2;              // 16-bit 모노
-        int tailBytes = (int)(tailSeconds.Value * bytesPerSecond);
-        int dataLength = bytes.Length - header;
-        if (dataLength <= tailBytes) return new MemoryStream(bytes);
+        int dataLength = (bytes.Length - header) / 2 * 2;
+        if (dataLength <= 0) return null;
 
-        int skip = (dataLength - tailBytes) / 2 * 2;                   // 샘플 경계에 맞춘다
-        offsetSeconds = (double)skip / bytesPerSecond;
+        // 녹음 중인 파일은 헤더의 길이 필드가 실제 데이터와 어긋날 수 있다.
+        // 그래서 읽을 때마다 실제 크기로 헤더를 다시 만든다.
+        int skip = 0, take = dataLength;
+        if (tailSeconds is not null)
+        {
+            int tailBytes = (int)(tailSeconds.Value * bytesPerSecond);
+            if (dataLength > tailBytes)
+            {
+                skip = (dataLength - tailBytes) / 2 * 2;
+                take = tailBytes;
+                offsetSeconds = (double)skip / bytesPerSecond;
+            }
+        }
 
         var output = new MemoryStream();
-        output.Write(BuildHeader(tailBytes));
-        output.Write(bytes, header + skip, tailBytes);
+        output.Write(BuildHeader(take));
+        output.Write(bytes, header + skip, take);
         output.Position = 0;
         return output;
     }

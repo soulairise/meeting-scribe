@@ -151,7 +151,7 @@ python3 scripts/evaluate.py testdata/reference-spoken.txt out.json
 ./scripts/make-dmg.sh       # 배포용 DMG 생성
 ```
 
-`build/MeetingScribe-0.1.0.dmg` — 드래그해서 응용 프로그램에 넣는다.
+`build/MeetingScribe-0.1.1.dmg` — 드래그해서 응용 프로그램에 넣는다.
 설치·사용 안내는 `docs/설치안내.txt` 에 있고 DMG 안에도 들어간다.
 
 ### ⚠️ 첫 실행 — macOS 15 부터 절차가 바뀌었다
@@ -273,6 +273,17 @@ ASR 단계에서 고치려 시도했으나 **효과가 전혀 없었다.** 그�
 - **긴 회의 미검증** — 66초 전사에 LLM 42초가 걸렸다. 90분 회의는 전사문이 커서 분할 처리가 필요할 수 있다
 - **화자분리 없음** — 지금은 트랙(마이크/시스템)으로만 "나/상대"를 나눈다. 상대가 여러 명이면 구분되지 않는다
 - **클라우드 API 미비교** — 온디바이스만 검증했다
+
+---
+
+# 내려받기
+
+| 플랫폼 | 파일 | 비고 |
+|---|---|---|
+| macOS 26+ | `MeetingScribe-0.1.1.dmg` | 486KB. OS 내장 음성인식 사용 |
+| Windows 10 20H1+ (x64) | `MeetingScribe-0.1.1-win-x64.zip` | 64MB. .NET 포함, 첫 실행 시 모델 550MB 다운로드 |
+
+[릴리스 페이지](https://github.com/soulairise/meeting-scribe/releases/latest)에서 받는다.
 
 ## 로드맵
 

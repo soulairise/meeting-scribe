@@ -121,9 +121,9 @@ public sealed class MainForm : Form
     {
         if (_busy) return;
 
-        if (_capture is null && _resultPath is null)         { StartRecording(); return; }
-        if (_capture is not null)                            { await StopAndProcessAsync(); return; }
-        Reset();
+        if (_capture is not null) { await StopAndProcessAsync(); return; }
+        if (_resultPath is not null) { OpenPath(_resultPath); Reset(); return; }
+        StartRecording();
     }
 
     private void StartRecording()
@@ -224,7 +224,8 @@ public sealed class MainForm : Form
             SetStatusSafe("실패");
             MessageBox.Show(this, ex.Message, "처리 중 문제가 생겼습니다",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            _primary.Text = "새 녹음";
+            _resultPath = null;
+            _primary.Text = "녹음 시작";
         }
         finally
         {
@@ -295,7 +296,6 @@ public sealed class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (_resultPath is not null && _primary.Text == "결과 열기") OpenPath(_resultPath);
         _cts?.Cancel();
         _capture?.Dispose();
         _tick.Dispose(); _liveTick.Dispose();

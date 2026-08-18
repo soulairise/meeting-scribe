@@ -36,6 +36,8 @@ public sealed class AudioCapture : IDisposable
 
     public void Start()
     {
+        // 리샘플러가 Media Foundation 을 쓴다. 캡처를 걸기 전에 확실히 초기화해 둔다.
+        try { NAudio.MediaFoundation.MediaFoundationApi.Startup(); } catch { /* 이미 초기화됨 */ }
         StartMic();
         StartSystem();
         if (_micWriter is null && _systemWriter is null)
