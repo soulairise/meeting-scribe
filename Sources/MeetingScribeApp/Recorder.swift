@@ -63,6 +63,15 @@ final class Recorder: ObservableObject {
         }
     }
 
+    /// 앱이 시작할 때 화자분리 모델을 미리 받아둔다 (최초 1회 약 260MB).
+    /// 받지 못해도 녹음과 전사는 그대로 되고, 화자 구분만 생략된다.
+    func warmUpModels() {
+        Task.detached {
+            guard let tool = try? Pipeline.resource("bin/Diarize") else { return }
+            _ = try? Pipeline.run(tool, ["--warmup", "--quiet"], timeout: 900)
+        }
+    }
+
     func start() {
         guard !isBusy else { return }
         do {

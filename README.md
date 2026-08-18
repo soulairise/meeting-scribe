@@ -7,8 +7,8 @@
 
 | 플랫폼 | 파일 | 크기 |
 |---|---|---|
-| **macOS** 26 이상 | [MeetingScribe-0.1.3.dmg](https://github.com/soulairise/meeting-scribe/releases/download/v0.1.3/MeetingScribe-0.1.3.dmg) | 496KB |
-| **Windows** 10 20H1 이상 (x64) | [MeetingScribe-0.1.3-win-x64.zip](https://github.com/soulairise/meeting-scribe/releases/download/v0.1.3/MeetingScribe-0.1.3-win-x64.zip) | 64MB |
+| **macOS** 26 이상 | [MeetingScribe-0.2.0.dmg](https://github.com/soulairise/meeting-scribe/releases/download/v0.2.0/MeetingScribe-0.2.0.dmg) | 2.8MB |
+| **Windows** 10 20H1 이상 (x64) | [MeetingScribe-0.2.0-win-x64.zip](https://github.com/soulairise/meeting-scribe/releases/download/v0.2.0/MeetingScribe-0.2.0-win-x64.zip) | 64MB |
 
 전체 목록은 [릴리스 페이지](https://github.com/soulairise/meeting-scribe/releases/latest)에 있다.
 
@@ -169,7 +169,7 @@ python3 scripts/evaluate.py testdata/reference-spoken.txt out.json
 ./scripts/make-dmg.sh       # 배포용 DMG 생성
 ```
 
-`build/MeetingScribe-0.1.3.dmg` — 드래그해서 응용 프로그램에 넣는다.
+`build/MeetingScribe-0.2.0.dmg` — 드래그해서 응용 프로그램에 넣는다.
 설치·사용 안내는 `docs/설치안내.txt` 에 있고 DMG 안에도 들어간다.
 
 ### ⚠️ 첫 실행 — macOS 15 부터 절차가 바뀌었다

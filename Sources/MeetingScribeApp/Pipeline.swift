@@ -88,6 +88,90 @@ enum Pipeline {
         return String(data: out, encoding: .utf8) ?? ""
     }
 
+    // MARK: 화자분리
+
+    struct SpeakerSegment: Codable {
+        let speaker: Int
+        let start: Double
+        let end: Double
+    }
+
+    /// NVIDIA Sortformer 로 화자를 나눈다. 음향만 보므로 언어와 무관하다.
+    /// 실패하면 빈 배열을 돌려주고, 호출자는 트랙 이름(나/상대)으로 물러선다.
+    static func diarize(wav: URL, timeout: TimeInterval = 60) -> [SpeakerSegment] {
+        guard let tool = try? resource("bin/Diarize") else { return [] }
+        let json = wav.deletingPathExtension().appendingPathExtension("diar.json")
+        guard (try? run(tool, [wav.path, "--quiet", "--json", json.path], timeout: timeout)) != nil,
+              let data = try? Data(contentsOf: json),
+              let segments = try? JSONDecoder().decode([SpeakerSegment].self, from: data)
+        else { return [] }
+        return segments
+    }
+
+    /// 라이브용: 파일 끝 구간만 잘라 화자분리한다. 시간축은 원본 기준으로 되돌린다.
+    static func diarizeTail(wav: URL, seconds: Double, workDirectory: URL) -> [SpeakerSegment] {
+        guard let converter = try? resource("bin/Transcribe") else { return [] }
+        _ = converter                                   // 존재 확인용
+        let clip = workDirectory.appendingPathComponent("live-clip-\(wav.deletingPathExtension().lastPathComponent).wav")
+        guard let offset = writeTail(of: wav, seconds: seconds, to: clip) else { return [] }
+        let segments = diarize(wav: clip, timeout: 30)
+        try? FileManager.default.removeItem(at: clip)
+        return segments.map { SpeakerSegment(speaker: $0.speaker,
+                                             start: $0.start + offset,
+                                             end: $0.end + offset) }
+    }
+
+    /// WAV 끝에서 `seconds` 만큼을 새 파일로 쓰고, 잘라낸 시작 지점(초)을 돌려준다.
+    private static func writeTail(of source: URL, seconds: Double, to destination: URL) -> Double? {
+        guard let file = try? AVAudioFile(forReading: source), file.length > 0 else { return nil }
+        let rate = file.processingFormat.sampleRate
+        let wanted = AVAudioFramePosition(seconds * rate)
+        let start = max(0, file.length - wanted)
+        let count = AVAudioFrameCount(file.length - start)
+        guard count > 0 else { return nil }
+
+        file.framePosition = start
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: count),
+              (try? file.read(into: buffer, frameCount: count)) != nil,
+              buffer.frameLength > 0,
+              let out = try? AVAudioFile(forWriting: destination,
+                                         settings: file.fileFormat.settings),
+              (try? out.write(from: buffer)) != nil
+        else { return nil }
+        return Double(start) / rate
+    }
+
+    /// 전사 구간에 가장 많이 겹치는 화자를 붙인다. 겹치는 화자가 없으면 nil.
+    static func speaker(for start: Double, _ end: Double, in diar: [SpeakerSegment]) -> Int? {
+        var best: (speaker: Int, overlap: Double)? = nil
+        for d in diar {
+            let overlap = min(end, d.end) - max(start, d.start)
+            guard overlap > 0 else { continue }
+            if best == nil || overlap > best!.overlap { best = (d.speaker, overlap) }
+        }
+        return best?.speaker
+    }
+
+    /// 화자 번호를 화자 A, B, C … 로 바꾼다. 처음 등장한 순서대로 붙인다.
+    ///
+    /// "누가 나인지"는 판단하지 않는다. 온라인 강의처럼 상대 목소리가 스피커로 나오면
+    /// 마이크 트랙에서 상대가 더 많이 말하게 되어, 발화량으로 본인을 특정하면 틀린다.
+    /// 이름은 LLM 이 대화 속 호칭을 보고 붙인다.
+    struct SpeakerNamer {
+        private var names: [String: String] = [:]      // "track#index" -> 표시 이름
+        private var next = 0
+
+        mutating func name(track: String, speaker: Int?, fallback: String) -> String {
+            guard let speaker else { return fallback }
+            let key = "\(track)#\(speaker)"
+            if let existing = names[key] { return existing }
+            let label = "화자 " + String(UnicodeScalar(65 + min(next, 25))!)
+            next += 1
+            names[key] = label
+            return label
+        }
+    }
+
     // MARK: 문단 묶기
 
     struct Paragraph {
@@ -150,15 +234,28 @@ enum Pipeline {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         guard !wavs.isEmpty else { throw Failure(message: "녹음 파일이 없습니다") }
 
+        // 마이크 트랙을 먼저 처리해야 "나" 를 정할 수 있다.
+        let ordered = wavs.sorted { a, _ in a.deletingPathExtension().lastPathComponent == "mic" }
+        var diarizations: [String: [SpeakerSegment]] = [:]
+        for wav in ordered {
+            diarizations[wav.deletingPathExtension().lastPathComponent] = diarize(wav: wav)
+        }
+        var namer = SpeakerNamer()
+
         var rows: [(start: Double, end: Double, speaker: String, text: String)] = []
-        for wav in wavs {
+        for wav in ordered {
+            let track = wav.deletingPathExtension().lastPathComponent
             let json = wav.deletingPathExtension().appendingPathExtension("json")
             try run(tool, [wav.path, "--json", json.path])
             let decoded = try JSONDecoder().decode([String: [Segment]].self, from: Data(contentsOf: json))
-            let speaker = wav.deletingPathExtension().lastPathComponent == "mic" ? "나" : "상대"
+            let diar = diarizations[track] ?? []
+            let fallback = track == "mic" ? "나" : "상대"
             for segs in decoded.values {
                 for s in segs where !s.text.trimmingCharacters(in: .whitespaces).isEmpty {
-                    rows.append((s.start, s.end, speaker, s.text.trimmingCharacters(in: .whitespaces)))
+                    let who = namer.name(track: track,
+                                         speaker: speaker(for: s.start, s.end, in: diar),
+                                         fallback: fallback)
+                    rows.append((s.start, s.end, who, s.text.trimmingCharacters(in: .whitespaces)))
                 }
             }
         }
@@ -175,19 +272,31 @@ enum Pipeline {
         let mic = directory.appendingPathComponent("mic.wav")
         let sys = directory.appendingPathComponent("system.wav")
 
+        // 최근 구간만 화자분리한다. 66초 오디오에 1.2초쯤 걸려 실시간에 무리가 없다.
+        var diarizations: [String: [SpeakerSegment]] = [:]
+        for (wav, track) in [(mic, "mic"), (sys, "system")] where FileManager.default.fileExists(atPath: wav.path) {
+            diarizations[track] = diarizeTail(wav: wav, seconds: seconds, workDirectory: directory)
+        }
+        var namer = SpeakerNamer()
+
         var rows: [(start: Double, end: Double, speaker: String, text: String)] = []
-        for (wav, speaker) in [(mic, "나"), (sys, "상대")] {
+        for (wav, track, fallback) in [(mic, "mic", "나"), (sys, "system", "상대")] {
             guard FileManager.default.fileExists(atPath: wav.path) else { continue }
-            let json = directory.appendingPathComponent("live-\(speaker).json")
+            let json = directory.appendingPathComponent("live-\(track).json")
             guard (try? run(tool, [wav.path, "--tail", String(Int(seconds)), "--json", json.path],
                             timeout: 45)) != nil,
                   let data = try? Data(contentsOf: json),
                   let decoded = try? JSONDecoder().decode([String: [Segment]].self, from: data)
             else { continue }
+            let diar = diarizations[track] ?? []
             for segs in decoded.values {
                 for s in segs {
                     let text = s.text.trimmingCharacters(in: .whitespaces)
-                    if !text.isEmpty { rows.append((s.start, s.end, speaker, text)) }
+                    guard !text.isEmpty else { continue }
+                    let who = namer.name(track: track,
+                                         speaker: speaker(for: s.start, s.end, in: diar),
+                                         fallback: fallback)
+                    rows.append((s.start, s.end, who, text))
                 }
             }
         }

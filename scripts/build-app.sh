@@ -20,7 +20,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin" "$APP/Contents/Resources/templates"
 
 cp "$BIN/MeetingScribeApp" "$APP/Contents/MacOS/MeetingScribe"
-cp "$BIN/AudioCapture" "$BIN/Transcribe" "$APP/Contents/Resources/bin/"
+cp "$BIN/AudioCapture" "$BIN/Transcribe" "$BIN/Diarize" "$APP/Contents/Resources/bin/"
 cp templates/*.md templates/*.txt "$APP/Contents/Resources/templates/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
@@ -35,7 +35,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>MeetingScribe</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.3</string>
+  <key>CFBundleShortVersionString</key><string>0.2.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -51,8 +51,9 @@ PLIST
 
 echo "▶ 서명"
 # 자식 CLI 부터 서명하고 마지막에 번들 전체를 서명한다.
-codesign --force --sign - "$APP/Contents/Resources/bin/AudioCapture"
-codesign --force --sign - "$APP/Contents/Resources/bin/Transcribe"
+for tool in AudioCapture Transcribe Diarize; do
+  codesign --force --sign - "$APP/Contents/Resources/bin/$tool"
+done
 codesign --force --sign - "$APP"
 
 echo "완료: $APP"

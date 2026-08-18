@@ -8,7 +8,9 @@ struct MeetingScribeApp: App {
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--selftest"), i + 1 < args.count {
             let dir = URL(fileURLWithPath: args[i + 1])
-            if args.contains("--live") {
+            if args.contains("--full") {
+                if let transcript = try? Pipeline.transcribe(directory: dir) { print(transcript) }
+            } else if args.contains("--live") {
                 let lines = (try? Pipeline.liveTail(directory: dir, seconds: 25)) ?? []
                 lines.forEach { print($0) }
             } else {
@@ -61,6 +63,7 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { recorder.warmUpModels() }
     }
 
     @ViewBuilder private var statusBlock: some View {

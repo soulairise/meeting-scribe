@@ -4,6 +4,10 @@ import PackageDescription
 let package = Package(
     name: "meeting-scribe",
     platforms: [.macOS("14.4")],
+    dependencies: [
+        // NVIDIA Sortformer 를 CoreML 로 감싼 Swift 패키지. 화자분리에 쓴다.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.4"),
+    ],
     targets: [
         .executableTarget(
             name: "AudioCapture",
@@ -19,6 +23,12 @@ let package = Package(
                     "-Xlinker", "Resources/Info.plist",
                 ])
             ]
+        ),
+        .executableTarget(
+            name: "Diarize",
+            dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
+            path: "Sources/Diarize",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
             name: "MeetingScribeApp",
