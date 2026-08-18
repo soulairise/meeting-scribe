@@ -17,36 +17,50 @@ public static class Pipeline
     private static string TemplateDir =>
         Path.Combine(AppContext.BaseDirectory, "templates");
 
-    /// <summary>여러 트랙의 구간을 시각 순으로 합쳐 화자 표시가 붙은 전사문을 만든다.</summary>
-    public static string Merge(IEnumerable<(string Speaker, List<Segment> Segments)> tracks)
+    public sealed record Paragraph(double Start, string Speaker, string Text);
+
+    /// <summary>
+    /// 같은 사람이 이어서 말한 조각들을 한 문단으로 합친다.
+    /// 음성인식은 짧게 끊어진 조각을 쏟아내는데, 한 줄씩 보여주면 읽기 어렵다.
+    /// 화자가 바뀌거나, 말이 한동안 끊기거나, 문단이 길어지면 새 문단을 시작한다.
+    /// </summary>
+    public static List<Paragraph> Paragraphs(
+        IEnumerable<(string Speaker, List<Segment> Segments)> tracks,
+        double gapSeconds = 3.0, int maxCharacters = 220)
     {
         var rows = tracks
-            .SelectMany(t => t.Segments.Select(s => (s.Start, t.Speaker, s.Text)))
+            .SelectMany(t => t.Segments.Select(s => (s.Start, s.End, t.Speaker, s.Text)))
             .Where(r => !string.IsNullOrWhiteSpace(r.Text))
             .OrderBy(r => r.Start)
             .ToList();
 
-        var sb = new StringBuilder();
-        string? last = null;
-        foreach (var (start, speaker, text) in rows)
+        var result = new List<Paragraph>();
+        double lastEnd = double.NegativeInfinity;
+        foreach (var (start, end, speaker, text) in rows)
         {
-            var stamp = $"[{(int)start / 60:00}:{(int)start % 60:00}]";
-            if (speaker != last)
-            {
-                sb.AppendLine().Append("**").Append(speaker).Append("** ").Append(stamp).Append(' ').AppendLine(text.Trim());
-                last = speaker;
-            }
-            else sb.Append(stamp).Append(' ').AppendLine(text.Trim());
+            var trimmed = text.Trim();
+            var last = result.Count > 0 ? result[^1] : null;
+            bool joinable = last is not null
+                            && last.Speaker == speaker
+                            && start - lastEnd <= gapSeconds
+                            && last.Text.Length < maxCharacters;
+
+            if (joinable) result[^1] = last! with { Text = last.Text + " " + trimmed };
+            else result.Add(new Paragraph(start, speaker, trimmed));
+            lastEnd = end;
         }
-        return sb.ToString().Trim();
+        return result;
     }
 
+    private static string Stamp(double s) => $"{(int)s / 60:00}:{(int)s % 60:00}";
+
+    /// <summary>화자 표시가 붙은 전사문을 만든다. 시각은 문단 시작에만 넣는다.</summary>
+    public static string Merge(IEnumerable<(string Speaker, List<Segment> Segments)> tracks) =>
+        string.Join("\n\n", Paragraphs(tracks)
+            .Select(p => $"**{p.Speaker}** [{Stamp(p.Start)}]\n{p.Text}"));
+
     public static List<string> FormatLive(IEnumerable<(string Speaker, List<Segment> Segments)> tracks) =>
-        tracks.SelectMany(t => t.Segments.Select(s => (s.Start, t.Speaker, s.Text)))
-              .Where(r => !string.IsNullOrWhiteSpace(r.Text))
-              .OrderBy(r => r.Start)
-              .Select(r => $"{(int)r.Start / 60:00}:{(int)r.Start % 60:00}  {r.Speaker}  {r.Text.Trim()}")
-              .ToList();
+        Paragraphs(tracks).Select(p => $"{Stamp(p.Start)}  {p.Speaker}   {p.Text}").ToList();
 
     /// <summary>Claude Code CLI 를 찾는다. GUI 는 셸 PATH 를 물려받지 못해 직접 뒤진다.</summary>
     public static string? FindClaude()

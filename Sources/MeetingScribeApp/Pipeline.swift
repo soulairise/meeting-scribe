@@ -88,6 +88,53 @@ enum Pipeline {
         return String(data: out, encoding: .utf8) ?? ""
     }
 
+    // MARK: 문단 묶기
+
+    struct Paragraph {
+        let start: Double
+        let speaker: String
+        var text: String
+    }
+
+    /// 같은 사람이 이어서 말한 조각들을 한 문단으로 합친다.
+    ///
+    /// 음성인식은 짧게 끊어진 조각을 쏟아내는데, 그대로 한 줄씩 보여주면 읽기 어렵다.
+    /// 화자가 바뀌거나, 말이 한동안 끊기거나, 문단이 너무 길어지면 새 문단을 시작한다.
+    static func paragraphs(_ rows: [(start: Double, end: Double, speaker: String, text: String)],
+                           gapSeconds: Double = 3.0,
+                           maxCharacters: Int = 220) -> [Paragraph] {
+        var result: [Paragraph] = []
+        var lastEnd = -Double.infinity
+
+        for row in rows {
+            let text = row.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+
+            let sameSpeaker = result.last?.speaker == row.speaker
+            let continuous = row.start - lastEnd <= gapSeconds
+            let hasRoom = (result.last?.text.count ?? .max) < maxCharacters
+
+            if sameSpeaker, continuous, hasRoom, !result.isEmpty {
+                result[result.count - 1].text += glue(result[result.count - 1].text, text)
+            } else {
+                result.append(Paragraph(start: row.start, speaker: row.speaker, text: text))
+            }
+            lastEnd = row.end
+        }
+        return result
+    }
+
+    /// 조각을 이을 때 어색한 띄어쓰기를 피한다.
+    private static func glue(_ previous: String, _ next: String) -> String {
+        if previous.hasSuffix(" ") || next.hasPrefix(" ") { return next }
+        if let last = previous.last, ".!?…".contains(last) { return " " + next }
+        return " " + next
+    }
+
+    static func timestamp(_ seconds: Double) -> String {
+        String(format: "%02d:%02d", Int(seconds) / 60, Int(seconds) % 60)
+    }
+
     // MARK: 전사
 
     struct Segment: Codable {
@@ -103,7 +150,7 @@ enum Pipeline {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         guard !wavs.isEmpty else { throw Failure(message: "녹음 파일이 없습니다") }
 
-        var rows: [(Double, String, String)] = []
+        var rows: [(start: Double, end: Double, speaker: String, text: String)] = []
         for wav in wavs {
             let json = wav.deletingPathExtension().appendingPathExtension("json")
             try run(tool, [wav.path, "--json", json.path])
@@ -111,24 +158,14 @@ enum Pipeline {
             let speaker = wav.deletingPathExtension().lastPathComponent == "mic" ? "나" : "상대"
             for segs in decoded.values {
                 for s in segs where !s.text.trimmingCharacters(in: .whitespaces).isEmpty {
-                    rows.append((s.start, speaker, s.text.trimmingCharacters(in: .whitespaces)))
+                    rows.append((s.start, s.end, speaker, s.text.trimmingCharacters(in: .whitespaces)))
                 }
             }
         }
-        rows.sort { $0.0 < $1.0 }
-
-        var lines: [String] = []
-        var lastSpeaker: String? = nil
-        for (start, speaker, text) in rows {
-            let stamp = String(format: "[%02d:%02d]", Int(start) / 60, Int(start) % 60)
-            if speaker != lastSpeaker {
-                lines.append("\n**\(speaker)** \(stamp) \(text)")
-                lastSpeaker = speaker
-            } else {
-                lines.append("\(stamp) \(text)")
-            }
-        }
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        rows.sort { $0.start < $1.start }
+        return paragraphs(rows)
+            .map { "**\($0.speaker)** [\(timestamp($0.start))]\n\($0.text)" }
+            .joined(separator: "\n\n")
     }
 
     /// 라이브 자막: 파일 끝에서 `tail`초만 전사한다.
@@ -138,7 +175,7 @@ enum Pipeline {
         let mic = directory.appendingPathComponent("mic.wav")
         let sys = directory.appendingPathComponent("system.wav")
 
-        var rows: [(Double, String, String)] = []
+        var rows: [(start: Double, end: Double, speaker: String, text: String)] = []
         for (wav, speaker) in [(mic, "나"), (sys, "상대")] {
             guard FileManager.default.fileExists(atPath: wav.path) else { continue }
             let json = directory.appendingPathComponent("live-\(speaker).json")
@@ -150,14 +187,12 @@ enum Pipeline {
             for segs in decoded.values {
                 for s in segs {
                     let text = s.text.trimmingCharacters(in: .whitespaces)
-                    if !text.isEmpty { rows.append((s.start, speaker, text)) }
+                    if !text.isEmpty { rows.append((s.start, s.end, speaker, text)) }
                 }
             }
         }
-        rows.sort { $0.0 < $1.0 }
-        return rows.map { start, speaker, text in
-            String(format: "%02d:%02d  %@  %@", Int(start) / 60, Int(start) % 60, speaker, text)
-        }
+        rows.sort { $0.start < $1.start }
+        return paragraphs(rows).map { "\(timestamp($0.start))  \($0.speaker)   \($0.text)" }
     }
 
     /// 녹음이 끝나면 WAV 를 AAC(.m4a)로 줄이고 원본을 지운다.
