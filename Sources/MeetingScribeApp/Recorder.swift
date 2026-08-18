@@ -52,6 +52,17 @@ final class Recorder: ObservableObject {
             .appendingPathComponent("MeetingScribe")
     }
 
+    init() {
+        // 앱이 닫힐 때 녹음 프로세스를 반드시 정리한다.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, let p = self.process, p.isRunning else { return }
+            p.interrupt()
+            p.waitUntilExit()
+        }
+    }
+
     func start() {
         guard !isBusy else { return }
         do {

@@ -105,6 +105,26 @@ guard micCapture != nil || systemTap != nil else {
     fail("두 트랙 모두 시작하지 못했습니다")
 }
 
+// 부모 프로세스가 사라지면 스스로 멈춘다.
+// 앱이 강제 종료돼도 녹음만 남아 계속 도는 사고를 막는다.
+let parentPID = getppid()
+if parentPID > 1 {
+    let watcher = Thread {
+        while true {
+            Thread.sleep(forTimeInterval: 2)
+            if getppid() != parentPID { shutdown(0) }
+        }
+    }
+    watcher.start()
+}
+
+// 안전장치: 지정이 없어도 4시간이면 자동 종료한다.
+let hardLimit: Double = 4 * 60 * 60
+DispatchQueue.main.asyncAfter(deadline: .now() + hardLimit) {
+    FileHandle.standardError.write(Data("최대 녹음 시간(4시간)에 도달해 종료합니다.\n".utf8))
+    shutdown(0)
+}
+
 if let seconds {
     print("\(Int(seconds))초 후 자동 종료합니다. (Ctrl+C 로 즉시 중단)")
     DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { shutdown(0) }

@@ -49,7 +49,8 @@ enum Pipeline {
     // MARK: 프로세스 실행
 
     @discardableResult
-    static func run(_ executable: URL, _ arguments: [String], stdin: String? = nil) throws -> String {
+    static func run(_ executable: URL, _ arguments: [String], stdin: String? = nil,
+                    timeout: TimeInterval? = nil) throws -> String {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
@@ -67,9 +68,18 @@ enum Pipeline {
             try process.run()
         }
 
+        // 제한 시간을 넘기면 강제 종료한다. 자식이 멈춰도 앱은 계속 돈다.
+        var watchdog: DispatchWorkItem?
+        if let timeout {
+            let item = DispatchWorkItem { if process.isRunning { process.terminate() } }
+            watchdog = item
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: item)
+        }
+
         let out = outPipe.fileHandleForReading.readDataToEndOfFile()
         let err = errPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
+        watchdog?.cancel()
 
         guard process.terminationStatus == 0 else {
             let detail = String(data: err, encoding: .utf8) ?? ""
@@ -132,7 +142,8 @@ enum Pipeline {
         for (wav, speaker) in [(mic, "나"), (sys, "상대")] {
             guard FileManager.default.fileExists(atPath: wav.path) else { continue }
             let json = directory.appendingPathComponent("live-\(speaker).json")
-            guard (try? run(tool, [wav.path, "--tail", String(Int(seconds)), "--json", json.path])) != nil,
+            guard (try? run(tool, [wav.path, "--tail", String(Int(seconds)), "--json", json.path],
+                            timeout: 45)) != nil,
                   let data = try? Data(contentsOf: json),
                   let decoded = try? JSONDecoder().decode([String: [Segment]].self, from: data)
             else { continue }

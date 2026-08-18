@@ -23,9 +23,9 @@ struct MeetingScribeApp: App {
     var body: some Scene {
         WindowGroup("MeetingScribe") {
             ContentView()
-                .frame(width: 460, height: 480)
+                .frame(minWidth: 470, idealWidth: 470, minHeight: 560, idealHeight: 620)
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
     }
 }
 
@@ -51,6 +51,7 @@ struct ContentView: View {
             statusBlock
 
             liveCaptions
+                .frame(maxHeight: .infinity)
 
             controls
 
@@ -59,6 +60,7 @@ struct ContentView: View {
                 .font(.caption)
         }
         .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder private var statusBlock: some View {
@@ -111,7 +113,7 @@ struct ContentView: View {
                     }
                     .padding(10)
                 }
-                .frame(height: 92)                       // 대략 3~4줄
+                .frame(minHeight: 120, maxHeight: .infinity)   // 3~4줄 이상, 창을 키우면 함께 늘어난다
                 .background(Color(nsColor: .textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
@@ -134,10 +136,14 @@ struct ContentView: View {
         case .transcribing, .summarizing:
             Button("처리 중…") {}.disabled(true).controlSize(.large)
         case .done:
-            HStack {
-                Button("결과 열기") { recorder.openResult() }.controlSize(.large)
-                Button("Finder에서 보기") { recorder.revealResult() }
-                Button("새 녹음") { recorder.reset() }
+            VStack(spacing: 8) {
+                Button("결과 열기") { recorder.openResult() }
+                    .keyboardShortcut(.defaultAction)
+                    .controlSize(.large)
+                HStack {
+                    Button("Finder에서 보기") { recorder.revealResult() }
+                    Button("새 녹음") { recorder.reset() }
+                }
             }
         }
     }

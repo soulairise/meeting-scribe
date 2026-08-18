@@ -124,6 +124,15 @@ func transcribe(url: URL, locale: Locale, tail: Double?) async throws -> [Segmen
         }
     }
 
+    // ⚠️ 오디오가 없으면 분석기를 시작하지 않는다.
+    //    빈 입력을 넣으면 results 스트림이 끝나지 않아 프로세스가 영원히 멈춘다.
+    let probe = try AVAudioFile(forReading: url)
+    let availableSeconds = Double(probe.length) / probe.processingFormat.sampleRate
+    guard probe.length > 0, availableSeconds >= 0.3 else {
+        step("오디오 없음 (\(String(format: "%.2f", availableSeconds))초) — 건너뜀")
+        return []
+    }
+
     step("스트림 준비")
     let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
 
@@ -135,15 +144,15 @@ func transcribe(url: URL, locale: Locale, tail: Double?) async throws -> [Segmen
                                   analysisContext: context)
 
     // 결과 수집은 start() 이후에 시작한다.
-    let collector = Task { () -> [Segment] in
-        var segments: [Segment] = []
+    // 어떤 이유로든 스트림이 끝나지 않을 수 있어, 모은 것을 상자에 담아두고 워치독과 경주시킨다.
+    let box = SegmentBox()
+    let collector = Task {
         for try await result in transcriber.results {
-            segments.append(Segment(start: result.range.start.seconds,
-                                    end: result.range.end.seconds,
-                                    text: String(result.text.characters),
-                                    alternatives: result.alternatives.map { String($0.characters) }))
+            box.append(Segment(start: result.range.start.seconds,
+                               end: result.range.end.seconds,
+                               text: String(result.text.characters),
+                               alternatives: result.alternatives.map { String($0.characters) }))
         }
-        return segments
     }
 
     // ⚠️ bestAvailableAudioFormat 은 반드시 start() 이후에 부른다.
@@ -204,7 +213,25 @@ func transcribe(url: URL, locale: Locale, tail: Double?) async throws -> [Segmen
     step("finalize")
     try await analyzer.finalizeAndFinishThroughEndOfInput()
     step("결과 수집")
-    let collected = try await collector.value
+    // 워치독: 오디오 길이에 비례한 여유를 두고, 넘으면 모은 것만 돌려준다.
+    let budget = max(20.0, availableSeconds * 2.0)
+    let finished = await withTaskGroup(of: Bool.self) { group in
+        group.addTask { try? await collector.value; return true }
+        group.addTask {
+            try? await Task.sleep(nanoseconds: UInt64(budget * 1_000_000_000))
+            return false
+        }
+        let first = await group.next() ?? false
+        group.cancelAll()
+        return first
+    }
+    if !finished {
+        step("응답 지연 — \(Int(budget))초 초과, 수집분만 반환")
+        collector.cancel()
+        await analyzer.cancelAndFinishNow()
+    }
+
+    let collected = box.drain()
     guard timeOffset > 0 else { return collected }
     return collected.map { Segment(start: $0.start + timeOffset, end: $0.end + timeOffset,
                                    text: $0.text, alternatives: $0.alternatives) }
@@ -318,4 +345,14 @@ if #available(macOS 26.0, *) {
     }
 } else {
     fail("온디바이스 음성인식은 macOS 26 이상이 필요합니다")
+}
+
+
+/// 오디오 스레드와 워치독이 함께 건드리므로 잠금으로 보호한다.
+final class SegmentBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [Segment] = []
+
+    func append(_ s: Segment) { lock.lock(); items.append(s); lock.unlock() }
+    func drain() -> [Segment] { lock.lock(); defer { lock.unlock() }; return items }
 }
