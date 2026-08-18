@@ -4,3 +4,7 @@ recordings/
 recordings-open/
 *.wav
 .omc/
+windows/publish/
+windows/**/bin/
+windows/**/obj/
+*.zip

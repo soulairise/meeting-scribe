@@ -1,0 +1,40 @@
+name: Windows build
+
+on:
+  push:
+    paths: ['windows/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish
+        run: >
+          dotnet publish windows/MeetingScribe/MeetingScribe.csproj
+          -c Release -r win-x64 --self-contained true
+          -o publish
+
+      - name: Package
+        run: Compress-Archive -Path publish\* -DestinationPath MeetingScribe-win-x64.zip
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MeetingScribe-win-x64
+          path: MeetingScribe-win-x64.zip
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        run: gh release upload ${{ github.event.release.tag_name }} MeetingScribe-win-x64.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh

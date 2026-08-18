@@ -151,8 +151,23 @@ python3 scripts/evaluate.py testdata/reference-spoken.txt out.json
 ./scripts/make-dmg.sh       # 배포용 DMG 생성
 ```
 
-`build/MeetingScribe-0.1.0.dmg` — 드래그해서 응용 프로그램에 넣으면 끝난다.
+`build/MeetingScribe-0.1.0.dmg` — 드래그해서 응용 프로그램에 넣는다.
 설치·사용 안내는 `docs/설치안내.txt` 에 있고 DMG 안에도 들어간다.
+
+### ⚠️ 첫 실행 — macOS 15 부터 절차가 바뀌었다
+
+자체 서명 앱이라 Gatekeeper 가 차단한다. **"오른쪽 클릭 → 열기" 는 macOS 15 부터 통하지 않는다.**
+차단 대화상자에 "열기" 버튼 자체가 없다.
+
+1. 더블클릭 → 차단 창 → [완료]
+2. **시스템 설정 > 개인정보 보호 및 보안** → 아래로 스크롤 → "'MeetingScribe'이(가) 차단되었습니다" → **[그래도 열기]**
+3. 암호/Touch ID 확인 → 다시 뜨는 창에서 [열기]
+
+또는 격리 속성을 직접 지운다:
+
+```bash
+xattr -d com.apple.quarantine /Applications/MeetingScribe.app
+```
 
 앱은 GUI 안에 CLI 도구(`AudioCapture`, `Transcribe`)와 템플릿을 함께 담는다.
 GUI가 자식 프로세스를 띄우면 **TCC 권한 주체가 앱이 되므로** 마이크·시스템 오디오 권한을
