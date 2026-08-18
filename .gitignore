@@ -1,0 +1,6 @@
+.build/
+build/
+recordings/
+recordings-open/
+*.wav
+.omc/
